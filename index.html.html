@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sublinnova – Pagos</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+    header {
+      background: linear-gradient(135deg, #009ee3, #006fb5);
+      color: white;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    header h1 { font-size: 1.3rem; font-weight: 700; }
+    header span { font-size: 0.85rem; opacity: 0.85; }
+    .container { max-width: 700px; margin: 0 auto; padding: 24px 16px; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .balance-label { font-size: 0.85rem; color: #666; margin-bottom: 6px; }
+    .balance-amount { font-size: 2rem; font-weight: 700; color: #009ee3; }
+    .balance-sub { font-size: 0.8rem; color: #999; margin-top: 4px; }
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: #333;
+    }
+    .payment {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .payment:last-child { border-bottom: none; }
+    .payment-info { flex: 1; }
+    .payment-name { font-weight: 600; font-size: 0.95rem; }
+    .payment-date { font-size: 0.78rem; color: #999; margin-top: 2px; }
+    .payment-desc { font-size: 0.78rem; color: #666; margin-top: 2px; }
+    .payment-amount { font-weight: 700; font-size: 1rem; color: #00b87a; white-space: nowrap; margin-left: 12px; }
+    .payment-amount.negative { color: #e53e3e; }
+    .status-badge {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-left: 8px;
+      font-weight: 600;
+    }
+    .status-approved { background: #e6f7ef; color: #00875a; }
+    .status-pending { background: #fff8e1; color: #b7791f; }
+    .status-rejected { background: #fde8e8; color: #c53030; }
+    .btn {
+      background: #009ee3;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #007bbf; }
+    .btn:disabled { background: #b0d4ee; cursor: not-allowed; }
+    .loading { text-align: center; padding: 30px; color: #999; font-size: 0.9rem; }
+    .error-msg {
+      background: #fde8e8;
+      color: #c53030;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      margin-bottom: 16px;
+    }
+    .empty { text-align: center; color: #aaa; padding: 20px; font-size: 0.9rem; }
+    .token-section { margin-bottom: 16px; }
+    .token-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #ddd;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      margin-top: 8px;
+      font-family: monospace;
+    }
+    .token-input:focus { outline: none; border-color: #009ee3; }
+    .token-label { font-size: 0.85rem; color: #555; font-weight: 600; }
+    .update-time { font-size: 0.75rem; color: #aaa; text-align: right; margin-top: -8px; margin-bottom: 12px; }
+    .filter-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1.5px solid #ddd;
+      background: white;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .filter-btn.active { background: #009ee3; color: white; border-color: #009ee3; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>💜 Sublinnova</h1>
+      <span>Panel de pagos</span>
+    </div>
+    <span id="header-time"></span>
+  </header>
+
+  <div class="container">
+
+    <div class="card token-section">
+      <div class="token-label">🔑 Access Token de Mercado Pago</div>
+      <input type="password" class="token-input" id="token-input" placeholder="APP_USR-..." />
+      <br/><br/>
+      <button class="btn" id="load-btn" onclick="cargarDatos()">Ver pagos</button>
+    </div>
+
+    <div id="error-container"></div>
+
+    <div id="balance-card" style="display:none" class="card">
+      <div class="balance-label">Saldo disponible</div>
+      <div class="balance-amount" id="balance-amount">—</div>
+      <div class="balance-sub" id="balance-sub"></div>
+    </div>
+
+    <div id="payments-card" style="display:none" class="card">
+      <div class="section-title">Últimos pagos recibidos</div>
+      <div class="filter-row">
+        <button class="filter-btn active" onclick="filtrar('todos', this)">Todos</button>
+        <button class="filter-btn" onclick="filtrar('approved', this)">Aprobados</button>
+        <button class="filter-btn" onclick="filtrar('pending', this)">Pendientes</button>
+      </div>
+      <div id="payments-list"><div class="loading">Cargando...</div></div>
+    </div>
+
+    <div id="refresh-row" style="display:none">
+      <button class="btn" style="background:#f0f2f5;color:#555;border:1.5px solid #ddd" onclick="cargarDatos()">🔄 Actualizar</button>
+    </div>
+
+  </div>
+
+  <script>
+    let allPayments = [];
+    let currentFilter = 'todos';
+
+    function updateTime() {
+      const now = new Date();
+      document.getElementById('header-time').textContent =
+        now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    }
+    updateTime();
+    setInterval(updateTime, 60000);
+
+    function formatMonto(amount, currency) {
+      return new Intl.NumberFormat('es-CL', {
+        style: 'currency', currency: currency || 'CLP', maximumFractionDigits: 0
+      }).format(amount);
+    }
+
+    function formatFecha(dateStr) {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }) +
+        ' ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function statusBadge(status) {
+      const map = {
+        approved: ['Aprobado', 'status-approved'],
+        pending: ['Pendiente', 'status-pending'],
+        rejected: ['Rechazado', 'status-rejected'],
+        in_process: ['En proceso', 'status-pending'],
+        refunded: ['Reembolsado', 'status-rejected'],
+      };
+      const [label, cls] = map[status] || [status, 'status-pending'];
+      return `<span class="status-badge ${cls}">${label}</span>`;
+    }
+
+    function getNombre(p) {
+      if (p.payer) {
+        const { first_name, last_name, email } = p.payer;
+        if (first_name || last_name) return `${first_name || ''} ${last_name || ''}`.trim();
+        if (email) return email;
+      }
+      return 'Sin nombre';
+    }
+
+    function renderPayments(payments) {
+      const list = document.getElementById('payments-list');
+      if (!payments.length) {
+        list.innerHTML = '<div class="empty">No hay pagos en este filtro.</div>';
+        return;
+      }
+      list.innerHTML = payments.map(p => {
+        const nombre = getNombre(p);
+        const monto = formatMonto(p.transaction_amount, p.currency_id);
+        const fecha = formatFecha(p.date_created);
+        const desc = p.description || p.payment_method_id || '';
+        const esNegativo = p.transaction_amount < 0;
+        return `
+          <div class="payment">
+            <div class="payment-info">
+              <div class="payment-name">${nombre} ${statusBadge(p.status)}</div>
+              <div class="payment-date">${fecha}</div>
+              ${desc ? `<div class="payment-desc">${desc}</div>` : ''}
+            </div>
+            <div class="payment-amount ${esNegativo ? 'negative' : ''}">${monto}</div>
+          </div>`;
+      }).join('');
+    }
+
+    function filtrar(tipo, btn) {
+      currentFilter = tipo;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filtered = tipo === 'todos' ? allPayments : allPayments.filter(p => p.status === tipo);
+      renderPayments(filtered);
+    }
+
+    async function cargarDatos() {
+      const token = document.getElementById('token-input').value.trim();
+      if (!token) { showError('Ingresa el Access Token primero.'); return; }
+
+      const btn = document.getElementById('load-btn');
+      btn.disabled = true;
+      btn.textContent = 'Cargando...';
+      document.getElementById('error-container').innerHTML = '';
+      document.getElementById('balance-card').style.display = 'none';
+      document.getElementById('payments-card').style.display = 'none';
+      document.getElementById('refresh-row').style.display = 'none';
+      document.getElementById('payments-list').innerHTML = '<div class="loading">Obteniendo pagos...</div>';
+
+      try {
+        // Saldo
+        const balRes = await fetch('https://api.mercadopago.com/v1/account/balance', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (balRes.status === 401) throw new Error('Token inválido o sin permisos.');
+        if (balRes.ok) {
+          const bal = await balRes.json();
+          const available = bal.available_balance ?? bal.total_amount ?? null;
+          if (available !== null) {
+            document.getElementById('balance-amount').textContent = formatMonto(available, 'CLP');
+            document.getElementById('balance-sub').textContent = 'Disponible para transferir';
+            document.getElementById('balance-card').style.display = 'block';
+          }
+        }
+
+        // Pagos
+        const payRes = await fetch('https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&limit=30', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!payRes.ok) throw new Error('Error al obtener pagos.');
+        const payData = await payRes.json();
+        allPayments = payData.results || [];
+
+        document.getElementById('payments-card').style.display = 'block';
+        document.getElementById('refresh-row').style.display = 'block';
+        filtrar(currentFilter, document.querySelector('.filter-btn.active'));
+
+      } catch (err) {
+        showError(err.message || 'Error de conexión. Verifica el token.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Ver pagos';
+      }
+    }
+
+    function showError(msg) {
+      document.getElementById('error-container').innerHTML =
+        `<div class="error-msg">⚠️ ${msg}</div>`;
+    }
+
+    // Cargar token desde localStorage si existe
+    const saved = localStorage.getItem('mp_token_sublinnova');
+    if (saved) document.getElementById('token-input').value = saved;
+
+    // Guardar token al escribir
+    document.getElementById('token-input').addEventListener('change', function() {
+      if (this.value) localStorage.setItem('mp_token_sublinnova', this.value);
+    });
+  </script>
+</body>
+</html>
