@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sublinnova – Pagos</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh;}
+  header{background:linear-gradient(135deg,#009ee3,#006fb5);color:white;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;}
+  header h1{font-size:1.15rem;font-weight:700;}
+  header span{font-size:0.8rem;opacity:0.85;}
+  .container{max-width:600px;margin:0 auto;padding:16px;}
+  .card{background:white;border-radius:12px;padding:18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,0.08);}
+  .token-label{font-size:0.82rem;color:#555;font-weight:600;margin-bottom:6px;}
+  .token-input{width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:0.82rem;font-family:monospace;}
+  .token-input:focus{outline:none;border-color:#009ee3;}
+  .btn{background:#009ee3;color:white;border:none;border-radius:8px;padding:12px;font-size:0.95rem;font-weight:600;cursor:pointer;width:100%;margin-top:10px;}
+  .btn:disabled{background:#b0d4ee;}
+  .btn-refresh{background:#f0f2f5;color:#555;border:1.5px solid #ddd;margin-top:0;}
+  .balance-label{font-size:0.8rem;color:#666;margin-bottom:4px;}
+  .balance-amount{font-size:1.8rem;font-weight:700;color:#009ee3;}
+  .balance-sub{font-size:0.75rem;color:#999;margin-top:2px;}
+  .section-title{font-size:0.95rem;font-weight:600;margin-bottom:12px;color:#333;}
+  .filter-row{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+  .filter-btn{padding:5px 12px;border-radius:20px;border:1.5px solid #ddd;background:white;font-size:0.75rem;cursor:pointer;font-weight:500;}
+  .filter-btn.active{background:#009ee3;color:white;border-color:#009ee3;}
+  .payment{display:flex;justify-content:space-between;align-items:flex-start;padding:11px 0;border-bottom:1px solid #f0f0f0;}
+  .payment:last-child{border-bottom:none;}
+  .payment-info{flex:1;}
+  .payment-name{font-weight:600;font-size:0.9rem;}
+  .payment-date{font-size:0.73rem;color:#999;margin-top:2px;}
+  .payment-desc{font-size:0.73rem;color:#666;margin-top:1px;}
+  .payment-amount{font-weight:700;font-size:0.95rem;color:#00b87a;white-space:nowrap;margin-left:10px;}
+  .badge{font-size:0.65rem;padding:2px 7px;border-radius:20px;margin-left:6px;font-weight:600;}
+  .approved{background:#e6f7ef;color:#00875a;}
+  .pending{background:#fff8e1;color:#b7791f;}
+  .rejected{background:#fde8e8;color:#c53030;}
+  .error-msg{background:#fde8e8;color:#c53030;padding:12px;border-radius:8px;font-size:0.85rem;margin-bottom:12px;}
+  .loading{text-align:center;padding:24px;color:#999;font-size:0.88rem;}
+  .empty{text-align:center;color:#aaa;padding:18px;font-size:0.88rem;}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>💜 Sublinnova</h1><span>Panel de pagos</span></div>
+  <span id="htime"></span>
+</header>
+<div class="container">
+  <div class="card">
+    <div class="token-label">🔑 Access Token</div>
+    <input type="password" class="token-input" id="tok" placeholder="APP_USR-..."/>
+    <button class="btn" id="loadbtn" onclick="load()">Ver pagos</button>
+  </div>
+  <div id="errc"></div>
+  <div id="balcard" style="display:none" class="card">
+    <div class="balance-label">Saldo disponible</div>
+    <div class="balance-amount" id="bamt">—</div>
+    <div class="balance-sub">Disponible para transferir</div>
+  </div>
+  <div id="paycard" style="display:none" class="card">
+    <div class="section-title">Últimos pagos recibidos</div>
+    <div class="filter-row">
+      <button class="filter-btn active" onclick="filtrar('todos',this)">Todos</button>
+      <button class="filter-btn" onclick="filtrar('approved',this)">Aprobados ✓</button>
+      <button class="filter-btn" onclick="filtrar('pending',this)">Pendientes</button>
+    </div>
+    <div id="plist"><div class="loading">Cargando...</div></div>
+  </div>
+  <div id="refrow" style="display:none">
+    <button class="btn btn-refresh" onclick="load()">🔄 Actualizar</button>
+  </div>
+</div>
+<script>
+const WORKER = 'https://sublinnova-mp.ykcarolina2509.workers.dev';
+let all=[];
+let curFilter='todos';
+
+function tick(){
+  const n=new Date();
+  document.getElementById('htime').textContent=n.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});
+}
+tick(); setInterval(tick,60000);
+
+function fmt(a,c){return new Intl.NumberFormat('es-CL',{style:'currency',currency:c||'CLP',maximumFractionDigits:0}).format(a);}
+function fdate(s){const d=new Date(s);return d.toLocaleDateString('es-CL',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});}
+function badge(s){const m={approved:['Aprobado','approved'],pending:['Pendiente','pending'],rejected:['Rechazado','rejected'],in_process:['En proceso','pending'],refunded:['Reembolsado','rejected']};const[l,c]=m[s]||[s,'pending'];return `<span class="badge ${c}">${l}</span>`;}
+function nombre(p){if(p.payer){const{first_name,last_name,email}=p.payer;if(first_name||last_name)return `${first_name||''} ${last_name||''}`.trim();if(email)return email;}return 'Sin nombre';}
+
+function render(pays){
+  const el=document.getElementById('plist');
+  if(!pays.length){el.innerHTML='<div class="empty">No hay pagos en este filtro.</div>';return;}
+  el.innerHTML=pays.map(p=>`
+    <div class="payment">
+      <div class="payment-info">
+        <div class="payment-name">${nombre(p)}${badge(p.status)}</div>
+        <div class="payment-date">${fdate(p.date_created)}</div>
+        ${p.description?`<div class="payment-desc">${p.description}</div>`:''}
+      </div>
+      <div class="payment-amount">${fmt(p.transaction_amount,p.currency_id)}</div>
+    </div>`).join('');
+}
+
+function filtrar(t,btn){
+  curFilter=t;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  render(t==='todos'?all:all.filter(p=>p.status===t));
+}
+
+async function load(){
+  const token=document.getElementById('tok').value.trim();
+  if(!token){err('Ingresa el Access Token primero.');return;}
+  const btn=document.getElementById('loadbtn');
+  btn.disabled=true;btn.textContent='Cargando...';
+  document.getElementById('errc').innerHTML='';
+  document.getElementById('balcard').style.display='none';
+  document.getElementById('paycard').style.display='none';
+  document.getElementById('refrow').style.display='none';
+
+  try{
+    const headers={Authorization:`Bearer ${token}`};
+    const [balRes,payRes]=await Promise.all([
+      fetch(`${WORKER}/balance`,{headers}),
+      fetch(`${WORKER}/pagos`,{headers})
+    ]);
+
+    if(balRes.status===401||payRes.status===401) throw new Error('Token inválido o sin permisos.');
+
+    if(balRes.ok){
+      const b=await balRes.json();
+      const av=b.available_balance??b.total_amount??null;
+      if(av!==null){document.getElementById('bamt').textContent=fmt(av,'CLP');document.getElementById('balcard').style.display='block';}
+    }
+
+    if(!payRes.ok) throw new Error('Error al obtener pagos.');
+    const pd=await payRes.json();
+    all=pd.results||[];
+    document.getElementById('paycard').style.display='block';
+    document.getElementById('refrow').style.display='block';
+    filtrar(curFilter,document.querySelector('.filter-btn.active'));
+
+  }catch(e){
+    err(e.message||'Error de conexión.');
+  }finally{
+    btn.disabled=false;btn.textContent='Ver pagos';
+  }
+}
+
+function err(m){document.getElementById('errc').innerHTML=`<div class="error-msg">⚠️ ${m}</div>`;}
+
+const saved=localStorage.getItem('mp_token_sublinnova');
+if(saved)document.getElementById('tok').value=saved;
+document.getElementById('tok').addEventListener('change',function(){
+  if(this.value)localStorage.setItem('mp_token_sublinnova',this.value);
+});
+</script>
+</body>
+</html>
